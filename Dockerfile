@@ -11,7 +11,7 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
 # FIXED PATH
-COPY ["MyWebAppProduct.csproj", "./"]
+COPY ["MyWebAppProduct/MyWebAppProduct.csproj", "MyWebAppProduct/"]
 RUN dotnet restore "./MyWebAppProduct.csproj"
 
 COPY . .
