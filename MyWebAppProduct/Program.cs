@@ -1,9 +1,9 @@
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddCors(options =>
@@ -13,6 +13,30 @@ builder.Services.AddCors(options =>
                         .AllowAnyMethod()
                         .AllowAnyHeader());
 });
+// Configure Kestrel for both local development and Cloud Run
+string port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+if (!int.TryParse(port, out int parsedPort))
+{
+    Console.WriteLine($"Warning: Invalid PORT environment variable value: {port}. Using default port 8080.");
+    parsedPort = 8080;
+}
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(parsedPort, configure => 
+    {
+        // Enable both HTTP1 and HTTP2
+        configure.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
+    });
+    Console.WriteLine($"Server configured to listen on port {parsedPort}");
+});
+
+// Disable request body size limit for Cloud Run
+builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
+{
+    options.Limits.MaxRequestBodySize = null;
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -22,7 +46,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Disable HTTPS redirection on Cloud Run
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthorization();
 app.UseCors("AllowAngularApp");
