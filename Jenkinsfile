@@ -18,21 +18,8 @@ pipeline {
                                     echo "Verifying service account permissions..."
                                     gcloud auth activate-service-account --key-file=$GCP_KEY --project=${GCP_PROJECT_ID}
                                     
-                                    # Enable required APIs first
-                                    echo "Enabling required Google Cloud APIs..."
-                                    required_apis="cloudresourcemanager.googleapis.com run.googleapis.com cloudbuild.googleapis.com storage-api.googleapis.com"
-                                    for api in $required_apis; do
-                                        echo "Enabling $api..."
-                                        if ! gcloud services enable $api --project=${GCP_PROJECT_ID}; then
-                                            echo "Failed to enable $api. Please enable it manually at:"
-                                            echo "https://console.developers.google.com/apis/api/$api/overview?project=${GCP_PROJECT_ID}"
-                                            exit 1
-                                        fi
-                                    done
-                                    
-                                    # Wait for APIs to be fully enabled
-                                    echo "Waiting for APIs to be fully enabled..."
-                                    sleep 30
+                                    # APIs should be enabled manually in the console
+                                    echo "Checking if required APIs are enabled..."
                                     
                                     # Check if service account has required roles
                                     SA_EMAIL=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
