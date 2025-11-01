@@ -8,23 +8,22 @@ pipeline {
     }
     
     stages {
-        stage('Build') {
+        stage('Build and Deploy') {
             steps {
+                // Build .NET application
                 sh '''
-                    # Restore and publish .NET application
+                    echo "Building .NET application..."
                     dotnet restore
                     dotnet publish -c Release -o ./publish
                 '''
-            }
-        }
-        
-        stage('Deploy') {
-            steps {
+                
+                // Deploy to Cloud Run
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
                     sh '''
                         set -e  # Exit on any error
                         
                         # Activate service account
+                        echo "Activating service account..."
                         gcloud auth activate-service-account --key-file=$GCP_KEY --project=${GCP_PROJECT_ID}
                         
                         # Deploy directly to Cloud Run using buildpacks (no Docker needed)
@@ -53,6 +52,20 @@ pipeline {
                     '''
                 }
             }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Deployment successful! Service URL:'
+            sh '''
+                gcloud run services describe ${SERVICE_NAME} \
+                    --region ${REGION} \
+                    --format="value(status.url)"
+            '''
+        }
+        failure {
+            echo 'Build or deployment failed! Check the logs above for details.'
         }
     }
     
