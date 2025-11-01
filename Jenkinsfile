@@ -22,21 +22,32 @@ pipeline {
                                     SA_EMAIL=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
                                     echo "Checking permissions for: $SA_EMAIL"
                                     
-                                    required_roles=(
-                                        "roles/run.admin"
-                                        "roles/storage.admin"
-                                        "roles/cloudbuild.builds.builder"
-                                    )
+                                    # Check Run Admin role
+                                    echo "Checking Cloud Run Admin role..."
+                                    if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
+                                        --format="table(bindings.members)" \
+                                        --filter="bindings.role:roles/run.admin" | grep -q $SA_EMAIL; then
+                                        echo "Warning: Service account missing role: roles/run.admin"
+                                        echo "Please run: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=roles/run.admin"
+                                    fi
                                     
-                                    for role in "${required_roles[@]}"; do
-                                        if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
-                                            --format="table(bindings.members)" \
-                                            --filter="bindings.role:$role" | grep -q $SA_EMAIL; then
-                                            echo "Warning: Service account missing role: $role"
-                                            echo "Please grant the role using:"
-                                            echo "gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=$role"
-                                        fi
-                                    done
+                                    # Check Storage Admin role
+                                    echo "Checking Storage Admin role..."
+                                    if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
+                                        --format="table(bindings.members)" \
+                                        --filter="bindings.role:roles/storage.admin" | grep -q $SA_EMAIL; then
+                                        echo "Warning: Service account missing role: roles/storage.admin"
+                                        echo "Please run: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=roles/storage.admin"
+                                    fi
+                                    
+                                    # Check Cloud Build role
+                                    echo "Checking Cloud Build role..."
+                                    if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
+                                        --format="table(bindings.members)" \
+                                        --filter="bindings.role:roles/cloudbuild.builds.builder" | grep -q $SA_EMAIL; then
+                                        echo "Warning: Service account missing role: roles/cloudbuild.builds.builder"
+                                        echo "Please run: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=roles/cloudbuild.builds.builder"
+                                    fi
                                 '''
                             }
                             
