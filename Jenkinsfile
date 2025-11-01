@@ -27,17 +27,38 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
                     sh '''
+                        set -e  # Exit on any error
+                        
                         # Activate service account
-                        gcloud auth activate-service-account --key-file=$GCP_KEY
+                        if ! gcloud auth activate-service-account --key-file=$GCP_KEY; then
+                            echo "Failed to activate service account"
+                            exit 1
+                        fi
+                        
+                        # Ensure .docker directory exists
+                        echo "Creating .docker directory..."
+                        if ! mkdir -p ${WORKSPACE}/.docker; then
+                            echo "Failed to create .docker directory"
+                            exit 1
+                        fi
                         
                         # Configure docker only for gcr.io (main region)
-                        echo '{"credHelpers":{"gcr.io":"gcloud"}}' > ${WORKSPACE}/.docker/config.json
+                        echo "Configuring Docker credential helper..."
+                        if ! echo '{"credHelpers":{"gcr.io":"gcloud"}}' > ${WORKSPACE}/.docker/config.json; then
+                            echo "Failed to write Docker config"
+                            exit 1
+                        fi
                         
                         # Push the image
-                        docker push gcr.io/${GCP_PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}
+                        echo "Pushing image to GCR..."
+                        if ! docker push gcr.io/${GCP_PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}; then
+                            echo "Failed to push image"
+                            exit 1
+                        fi
                         
-                        # Clean up docker config
-                        rm -f ${WORKSPACE}/.docker/config.json
+                        # Clean up docker config (keep the directory for future runs)
+                        echo "Cleaning up..."
+                        rm -f ${WORKSPACE}/.docker/config.json || true
                     '''
                 }
             }
