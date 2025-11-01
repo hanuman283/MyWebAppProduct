@@ -29,52 +29,40 @@ pipeline {
                     sh '''
                         set -e  # Exit on any error
                         
-                        # Activate service account
-                        if ! gcloud auth activate-service-account --key-file=$GCP_KEY; then
+                        # Activate service account with necessary scopes
+                        if ! gcloud auth activate-service-account --key-file=$GCP_KEY \
+                            --project=${GCP_PROJECT_ID}; then
                             echo "Failed to activate service account"
                             exit 1
                         fi
                         
-                        # Check and create repository if it doesn't exist
-                        echo "Checking GCR repository..."
-                        LOCATION="us" # adjust this to your desired location
-                        REPO_NAME="${IMAGE_NAME}"
-                        
-                        if ! gcloud artifacts repositories describe ${REPO_NAME} \
-                            --project=${GCP_PROJECT_ID} \
-                            --location=${LOCATION} > /dev/null 2>&1; then
-                            echo "Creating GCR repository..."
-                            gcloud artifacts repositories create ${REPO_NAME} \
-                                --project=${GCP_PROJECT_ID} \
-                                --repository-format=docker \
-                                --location=${LOCATION} \
-                                --description="Docker repository for ${IMAGE_NAME}"
-                        fi
-                        
-                        # Ensure .docker directory exists
-                        echo "Creating .docker directory..."
-                        if ! mkdir -p ${WORKSPACE}/.docker; then
-                            echo "Failed to create .docker directory"
+                        # Configure Docker to use gcloud as the credential helper
+                        echo "Configuring Docker authentication..."
+                        if ! gcloud auth configure-docker gcr.io --quiet; then
+                            echo "Failed to configure Docker authentication"
                             exit 1
                         fi
                         
-                        # Configure docker only for gcr.io (main region)
-                        echo "Configuring Docker credential helper..."
-                        if ! echo '{"credHelpers":{"gcr.io":"gcloud"}}' > ${WORKSPACE}/.docker/config.json; then
-                            echo "Failed to write Docker config"
-                            exit 1
-                        fi
-                        
-                        # Push the image
+                        # Push the image with retries
                         echo "Pushing image to GCR..."
-                        if ! docker push gcr.io/${GCP_PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}; then
-                            echo "Failed to push image"
-                            exit 1
-                        fi
+                        MAX_RETRIES=3
+                        RETRY_COUNT=0
                         
-                        # Clean up docker config (keep the directory for future runs)
-                        echo "Cleaning up..."
-                        rm -f ${WORKSPACE}/.docker/config.json || true
+                        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                            if docker push gcr.io/${GCP_PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}; then
+                                echo "Successfully pushed image to GCR"
+                                break
+                            else
+                                RETRY_COUNT=$((RETRY_COUNT + 1))
+                                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                                    echo "Push failed, retrying in 10 seconds... (Attempt $RETRY_COUNT of $MAX_RETRIES)"
+                                    sleep 10
+                                else
+                                    echo "Failed to push image after $MAX_RETRIES attempts"
+                                    exit 1
+                                fi
+                            fi
+                        done
                     '''
                 }
             }
