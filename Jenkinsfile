@@ -22,32 +22,53 @@ pipeline {
                                     SA_EMAIL=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
                                     echo "Checking permissions for: $SA_EMAIL"
                                     
-                                    # Check Run Admin role
-                                    echo "Checking Cloud Run Admin role..."
-                                    if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
-                                        --format="table(bindings.members)" \
-                                        --filter="bindings.role:roles/run.admin" | grep -q $SA_EMAIL; then
-                                        echo "Warning: Service account missing role: roles/run.admin"
-                                        echo "Please run: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=roles/run.admin"
+                                    # Function to check and grant role
+                                    check_and_grant_role() {
+                                        local role=$1
+                                        local description=$2
+                                        echo "Checking $description role..."
+                                        
+                                        if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
+                                            --format="table(bindings.members)" \
+                                            --filter="bindings.role:$role" | grep -q $SA_EMAIL; then
+                                            echo "Service account missing role: $role"
+                                            
+                                            # Check if we have permission to grant roles
+                                            if gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+                                                --member="serviceAccount:$SA_EMAIL" \
+                                                --role="$role" 2>/dev/null; then
+                                                echo "Successfully granted $description role to $SA_EMAIL"
+                                            else
+                                                echo "WARNING: Could not automatically grant $role"
+                                                echo "Please run manually: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=$role"
+                                                return 1
+                                            fi
+                                        else
+                                            echo "$description role is already granted."
+                                        fi
+                                        return 0
+                                    }
+                                    
+                                    # Initialize error counter
+                                    ROLE_ERRORS=0
+                                    
+                                    # Check and grant Cloud Run Admin role
+                                    check_and_grant_role "roles/run.admin" "Cloud Run Admin" || ROLE_ERRORS=$((ROLE_ERRORS + 1))
+                                    
+                                    # Check and grant Storage Admin role
+                                    check_and_grant_role "roles/storage.admin" "Storage Admin" || ROLE_ERRORS=$((ROLE_ERRORS + 1))
+                                    
+                                    # Check and grant Cloud Build role
+                                    check_and_grant_role "roles/cloudbuild.builds.builder" "Cloud Build Builder" || ROLE_ERRORS=$((ROLE_ERRORS + 1))
+                                    
+                                    # If any roles couldn't be granted, fail the build
+                                    if [ $ROLE_ERRORS -gt 0 ]; then
+                                        echo "ERROR: $ROLE_ERRORS role(s) are missing and couldn't be automatically granted."
+                                        echo "Please grant the missing roles manually using the commands shown above."
+                                        exit 1
                                     fi
                                     
-                                    # Check Storage Admin role
-                                    echo "Checking Storage Admin role..."
-                                    if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
-                                        --format="table(bindings.members)" \
-                                        --filter="bindings.role:roles/storage.admin" | grep -q $SA_EMAIL; then
-                                        echo "Warning: Service account missing role: roles/storage.admin"
-                                        echo "Please run: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=roles/storage.admin"
-                                    fi
-                                    
-                                    # Check Cloud Build role
-                                    echo "Checking Cloud Build role..."
-                                    if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
-                                        --format="table(bindings.members)" \
-                                        --filter="bindings.role:roles/cloudbuild.builds.builder" | grep -q $SA_EMAIL; then
-                                        echo "Warning: Service account missing role: roles/cloudbuild.builds.builder"
-                                        echo "Please run: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=roles/cloudbuild.builds.builder"
-                                    fi
+                                    echo "All required roles are properly configured."
                                 '''
                             }
                             
