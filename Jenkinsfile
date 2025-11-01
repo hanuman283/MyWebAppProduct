@@ -18,6 +18,22 @@ pipeline {
                                     echo "Verifying service account permissions..."
                                     gcloud auth activate-service-account --key-file=$GCP_KEY --project=${GCP_PROJECT_ID}
                                     
+                                    # Enable required APIs first
+                                    echo "Enabling required Google Cloud APIs..."
+                                    required_apis="cloudresourcemanager.googleapis.com run.googleapis.com cloudbuild.googleapis.com storage-api.googleapis.com"
+                                    for api in $required_apis; do
+                                        echo "Enabling $api..."
+                                        if ! gcloud services enable $api --project=${GCP_PROJECT_ID}; then
+                                            echo "Failed to enable $api. Please enable it manually at:"
+                                            echo "https://console.developers.google.com/apis/api/$api/overview?project=${GCP_PROJECT_ID}"
+                                            exit 1
+                                        fi
+                                    done
+                                    
+                                    # Wait for APIs to be fully enabled
+                                    echo "Waiting for APIs to be fully enabled..."
+                                    sleep 30
+                                    
                                     # Check if service account has required roles
                                     SA_EMAIL=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
                                     echo "Checking permissions for: $SA_EMAIL"
@@ -28,25 +44,48 @@ pipeline {
                                         local description=$2
                                         echo "Checking $description role..."
                                         
-                                        if ! gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
-                                            --format="table(bindings.members)" \
-                                            --filter="bindings.role:$role" | grep -q $SA_EMAIL; then
-                                            echo "Service account missing role: $role"
+                                        # First try to get current IAM policy
+                                        local policy_check
+                                        policy_check=$(gcloud projects get-iam-policy ${GCP_PROJECT_ID} \
+                                            --format="json" 2>/dev/null || echo "")
                                             
-                                            # Check if we have permission to grant roles
+                                        if [ -z "$policy_check" ]; then
+                                            echo "WARNING: Could not check current IAM policy. Service account may need cloudresourcemanager.projects.getIamPolicy permission"
+                                            # Try to grant the role anyway
                                             if gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
                                                 --member="serviceAccount:$SA_EMAIL" \
                                                 --role="$role" 2>/dev/null; then
                                                 echo "Successfully granted $description role to $SA_EMAIL"
+                                                return 0
                                             else
-                                                echo "WARNING: Could not automatically grant $role"
-                                                echo "Please run manually: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=$role"
+                                                echo "ERROR: Could not grant $role"
+                                                echo "Please run these commands manually:"
+                                                echo "1. gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=roles/resourcemanager.projectIamViewer"
+                                                echo "2. gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=$role"
                                                 return 1
                                             fi
-                                        else
-                                            echo "$description role is already granted."
                                         fi
-                                        return 0
+                                        
+                                        # Check if role exists in policy
+                                        if echo "$policy_check" | grep -q "$role"; then
+                                            if echo "$policy_check" | grep -q "$SA_EMAIL"; then
+                                                echo "$description role is already granted."
+                                                return 0
+                                            fi
+                                        fi
+                                        
+                                        echo "Service account missing role: $role"
+                                        # Try to grant the role
+                                        if gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+                                            --member="serviceAccount:$SA_EMAIL" \
+                                            --role="$role" 2>/dev/null; then
+                                            echo "Successfully granted $description role to $SA_EMAIL"
+                                            return 0
+                                        else
+                                            echo "WARNING: Could not automatically grant $role"
+                                            echo "Please run manually: gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} --member=serviceAccount:$SA_EMAIL --role=$role"
+                                            return 1
+                                        fi
                                     }
                                     
                                     # Initialize error counter
