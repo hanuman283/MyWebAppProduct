@@ -40,11 +40,14 @@ builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServe
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Enable Swagger for all environments
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "MyWebAppProduct API v1");
+    // Set the Swagger UI at the root
+    options.RoutePrefix = "swagger";
+});
 
 // Disable HTTPS redirection on Cloud Run
 if (app.Environment.IsDevelopment())
