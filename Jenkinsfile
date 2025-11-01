@@ -35,6 +35,22 @@ pipeline {
                             exit 1
                         fi
                         
+                        # Check and create repository if it doesn't exist
+                        echo "Checking GCR repository..."
+                        LOCATION="us" # adjust this to your desired location
+                        REPO_NAME="${IMAGE_NAME}"
+                        
+                        if ! gcloud artifacts repositories describe ${REPO_NAME} \
+                            --project=${GCP_PROJECT_ID} \
+                            --location=${LOCATION} > /dev/null 2>&1; then
+                            echo "Creating GCR repository..."
+                            gcloud artifacts repositories create ${REPO_NAME} \
+                                --project=${GCP_PROJECT_ID} \
+                                --repository-format=docker \
+                                --location=${LOCATION} \
+                                --description="Docker repository for ${IMAGE_NAME}"
+                        fi
+                        
                         # Ensure .docker directory exists
                         echo "Creating .docker directory..."
                         if ! mkdir -p ${WORKSPACE}/.docker; then
