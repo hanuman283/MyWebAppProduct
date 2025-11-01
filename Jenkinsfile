@@ -27,9 +27,17 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
                     sh '''
+                        # Activate service account
                         gcloud auth activate-service-account --key-file=$GCP_KEY
-                        gcloud auth configure-docker -q
+                        
+                        # Configure docker only for gcr.io (main region)
+                        echo '{"credHelpers":{"gcr.io":"gcloud"}}' > ${WORKSPACE}/.docker/config.json
+                        
+                        # Push the image
                         docker push gcr.io/${GCP_PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}
+                        
+                        # Clean up docker config
+                        rm -f ${WORKSPACE}/.docker/config.json
                     '''
                 }
             }
