@@ -1,0 +1,2 @@
+Removed: MyWebAppProduct/Dockerfile
+Removed: MyWebAppProduct/k8s/
